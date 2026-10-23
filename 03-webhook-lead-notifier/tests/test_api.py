@@ -1,3 +1,6 @@
+import csv
+import io
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -41,7 +44,7 @@ def test_requires_api_key(ctx):
     assert store.all() == [] and notifier.sent == []
 
 
-@pytest.mark.parametrize("patch", [{"phone": "123"}, {"name": "A"}, {"email": "not-an-email"}])
+@pytest.mark.parametrize("patch", [{"phone": "123"}, {"phone": "+7 000 000-00-00"}, {"name": "A"}, {"email": "not-an-email"}])
 def test_validation_errors(ctx, patch):
     client, _, store = ctx
     r = client.post("/webhook/lead", json={**GOOD, **patch}, headers=KEY)
@@ -69,3 +72,28 @@ def test_csv_export_and_health(ctx):
     lines = client.get("/leads.csv", headers=KEY).content.decode("utf-8-sig").splitlines()
     assert len(lines) == 2 and "+79123456789" in lines[1]
     assert client.get("/health").json() == {"status": "ok", "telegram": True}
+
+
+def test_unsent_leads_are_resent_with_next_one():
+    notifier, store = FakeNotifier(ok=False), LeadStore(":memory:")
+    client = TestClient(create_app(Settings(api_key="secret"), notifier, store))
+    client.post("/webhook/lead", json=GOOD, headers=KEY)
+    notifier.ok = True  # Telegram ожил
+    client.post("/webhook/lead", json={**GOOD, "name": "Мария"}, headers=KEY)
+    assert [r["notified"] for r in store.all()] == [1, 1]
+    assert "Заявка №1" in notifier.sent[-2] and "Мария" in notifier.sent[-1]
+
+
+def test_csv_export_neutralizes_formulas(ctx):
+    client, _, _ = ctx
+    client.post("/webhook/lead", json={**GOOD, "message": "=HYPERLINK(\"http://evil\")"}, headers=KEY)
+    text = client.get("/leads.csv", headers=KEY).content.decode("utf-8-sig")
+    row = list(csv.reader(io.StringIO(text), delimiter=";"))[1]
+    assert row[4].startswith("'=HYPERLINK") and row[2] == "+79123456789"
+
+
+def test_default_api_key_is_refused(monkeypatch):
+    monkeypatch.setattr("app.main.load_dotenv", lambda: None)
+    monkeypatch.setenv("API_KEY", "change-me")
+    with pytest.raises(RuntimeError):
+        Settings.from_env()
