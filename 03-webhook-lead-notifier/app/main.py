@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 log = logging.getLogger(__name__)
 CSV_COLUMNS = ("id", "name", "phone", "email", "message", "source", "notified", "created_at")
 
+
 class Settings(BaseModel):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
