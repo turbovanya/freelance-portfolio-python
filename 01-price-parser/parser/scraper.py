@@ -72,18 +72,27 @@ def parse_catalog_page(html: str, page_url: str) -> tuple[list[Product], Optiona
 
 
 def fetch(session: requests.Session, url: str, settings: Settings) -> str:
-    last_error: Optional[Exception] = None
+    error: Optional[Exception] = None
     for attempt in range(1, settings.retries + 1):
         try:
             resp = session.get(url, timeout=15)
             resp.raise_for_status()
-            resp.encoding = "utf-8"
-            return resp.text
+        except requests.HTTPError as exc:
+            # 4xx повторять бессмысленно, 5xx — пробуем ещё раз
+            if exc.response is not None and exc.response.status_code < 500:
+                raise
+            error = exc
         except requests.RequestException as exc:
-            last_error = exc
-            log.warning("Попытка %s/%s для %s не удалась: %s", attempt, settings.retries, url, exc)
+            error = exc
+        else:
+            # сайт не указал кодировку -> requests считает её latin-1 и ломает символы (Â£)
+            if "charset" not in resp.headers.get("Content-Type", ""):
+                resp.encoding = "utf-8"
+            return resp.text
+        log.warning("Попытка %s/%s для %s не удалась: %s", attempt, settings.retries, url, error)
+        if attempt < settings.retries:
             time.sleep(settings.request_delay * attempt)
-    raise RuntimeError(f"Не удалось загрузить {url}") from last_error
+    raise RuntimeError(f"Не удалось загрузить {url} за {settings.retries} попыток") from error
 
 
 def scrape(settings: Settings, session: Optional[requests.Session] = None) -> list[Product]:

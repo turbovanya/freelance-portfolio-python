@@ -1,8 +1,10 @@
 import pytest
+import requests
 from openpyxl import load_workbook
 
 from parser.export import to_csv, to_xlsx
-from parser.scraper import Product, filter_products, parse_catalog_page, parse_price
+from parser.config import Settings
+from parser.scraper import Product, fetch, filter_products, parse_catalog_page, parse_price
 from parser.storage import PriceStore
 
 HTML = """
@@ -80,3 +82,48 @@ def test_exports(tmp_path):
     wb = load_workbook(to_xlsx(items, str(tmp_path / "p.xlsx"), changes))
     assert wb.sheetnames == ["Товары", "Изменения цен"]
     assert wb["Товары"].max_row == 3
+    assert wb["Товары"]["E2"].value == "да"
+
+
+class FakeResponse:
+    def __init__(self, status, text="ok", content_type="text/html"):
+        self.status_code, self.text, self.encoding = status, text, None
+        self.headers = {"Content-Type": content_type}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(response=self)
+
+
+class FakeSession:
+    def __init__(self, *responses):
+        self.responses, self.calls = list(responses), 0
+
+    def get(self, url, timeout):
+        self.calls += 1
+        r = self.responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+FAST = Settings(retries=3, request_delay=0)
+
+
+def test_fetch_retries_on_server_and_network_errors():
+    session = FakeSession(requests.ConnectionError("down"), FakeResponse(503), FakeResponse(200, "page"))
+    assert fetch(session, URL, FAST) == "page"
+    assert session.calls == 3
+
+
+def test_fetch_does_not_retry_404():
+    session = FakeSession(FakeResponse(404), FakeResponse(200))
+    with pytest.raises(requests.HTTPError):
+        fetch(session, URL, FAST)
+    assert session.calls == 1
+
+
+def test_fetch_gives_up_after_retries():
+    session = FakeSession(*[FakeResponse(500)] * 3)
+    with pytest.raises(RuntimeError):
+        fetch(session, URL, FAST)

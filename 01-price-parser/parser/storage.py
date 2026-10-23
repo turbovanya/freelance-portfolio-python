@@ -35,18 +35,25 @@ class PriceStore:
         changes = []
         for p in products:
             old = previous.get(p.url)
-            if old is not None and abs(old - p.price) > 1e-9:
+            if old is not None and abs(old - p.price) < 0.005:
+                continue  # цена не изменилась — новую запись не пишем
+            if old is not None:
                 changes.append({
                     "title": p.title, "url": p.url, "old_price": old, "new_price": p.price,
                     "delta": round(p.price - old, 2),
                 })
-            if old is None or abs(old - p.price) > 1e-9:
-                self.conn.execute(
-                    "INSERT INTO price_history(url, title, price, scraped_at) VALUES (?,?,?,?)",
-                    (p.url, p.title, p.price, now),
-                )
+            self.conn.execute(
+                "INSERT INTO price_history(url, title, price, scraped_at) VALUES (?,?,?,?)",
+                (p.url, p.title, p.price, now),
+            )
         self.conn.commit()
         return changes
 
     def close(self):
         self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()

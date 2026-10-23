@@ -9,15 +9,19 @@ HEADERS = ["title", "price", "currency", "rating", "in_stock", "url", "image_url
 RU_HEADERS = ["Название", "Цена", "Валюта", "Рейтинг", "В наличии", "Ссылка", "Картинка"]
 
 
+def _row(product) -> list:
+    d = product.to_dict()
+    d["in_stock"] = "да" if d["in_stock"] else "нет"
+    return [d[h] for h in HEADERS]
+
+
 def to_csv(products, path: str) -> str:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     # utf-8-sig + ';' — файл корректно открывается двойным кликом в русском Excel
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(RU_HEADERS)
-        for p in products:
-            d = p.to_dict()
-            writer.writerow([d[h] for h in HEADERS])
+        writer.writerows(_row(p) for p in products)
     return path
 
 
@@ -30,8 +34,7 @@ def to_xlsx(products, path: str, changes=None) -> str:
     for cell in ws[1]:
         cell.font = Font(bold=True)
     for p in products:
-        d = p.to_dict()
-        ws.append([d[h] for h in HEADERS])
+        ws.append(_row(p))
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
     for i, width in enumerate([48, 10, 8, 9, 11, 60, 60], start=1):
@@ -39,7 +42,12 @@ def to_xlsx(products, path: str, changes=None) -> str:
     if changes:
         cs = wb.create_sheet("Изменения цен")
         cs.append(["Название", "Было", "Стало", "Разница", "Ссылка"])
+        for cell in cs[1]:
+            cell.font = Font(bold=True)
         for c in changes:
             cs.append([c["title"], c["old_price"], c["new_price"], c["delta"], c["url"]])
+        cs.freeze_panes = "A2"
+        for i, width in enumerate([48, 10, 10, 10, 60], start=1):
+            cs.column_dimensions[get_column_letter(i)].width = width
     wb.save(path)
     return path
