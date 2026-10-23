@@ -91,6 +91,13 @@ async def test_cancel_resets_form(env):
     assert storage.stats()["total"] == 0
 
 
+async def test_cancel_command(env):
+    dp, bot, storage, rec = env
+    await say(dp, bot, BTN_LEAD)
+    await say(dp, bot, "/cancel")
+    assert "Отменено" in sent_texts(rec, 7)[-1]
+
+
 async def test_faq_answer_and_fallback(env):
     dp, bot, storage, rec = env
     await say(dp, bot, "а какая у вас стоимость?")

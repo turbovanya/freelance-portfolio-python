@@ -1,8 +1,10 @@
 import csv
 import io
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from .validators import csv_safe
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS leads (
@@ -38,16 +40,18 @@ class LeadStorage:
 
     def stats(self) -> dict:
         total = self.conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
-        today = datetime.now(timezone.utc).date().isoformat()
-        today_count = self.conn.execute(
-            "SELECT COUNT(*) FROM leads WHERE created_at LIKE ?", (today + "%",)
-        ).fetchone()[0]
-        return {"total": total, "today": today_count}
+        # «за сутки», а не «за сегодня»: created_at в UTC, и календарный день разъехался бы с московским
+        since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec="seconds")
+        last_day = self.conn.execute("SELECT COUNT(*) FROM leads WHERE created_at >= ?", (since,)).fetchone()[0]
+        return {"total": total, "last_day": last_day}
 
     def export_csv(self) -> bytes:
         buf = io.StringIO()
         writer = csv.writer(buf, delimiter=";")
         writer.writerow(["id", "user_id", "username", "name", "phone", "comment", "created_at"])
         for r in self.conn.execute("SELECT * FROM leads ORDER BY id"):
-            writer.writerow([r["id"], r["user_id"], r["username"], r["name"], r["phone"], r["comment"], r["created_at"]])
+            writer.writerow([csv_safe(r[k]) for k in r.keys()])
         return buf.getvalue().encode("utf-8-sig")
+
+    def close(self):
+        self.conn.close()

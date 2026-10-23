@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -9,6 +11,8 @@ from .config import Config
 from .db import LeadStorage
 from .faq import find_answer
 from .validators import clean_comment, normalize_phone, validate_name
+
+log = logging.getLogger(__name__)
 
 BTN_LEAD = "📝 Оставить заявку"
 BTN_FAQ = "❓ Частые вопросы"
@@ -39,7 +43,9 @@ def format_lead_for_admin(lead_id: int, message: Message, name: str, phone: str,
 
 def build_router(config: Config, storage: LeadStorage, faq: list) -> Router:
     router = Router()
-    is_admin = lambda m: m.from_user and m.from_user.id in config.admin_ids  # noqa: E731
+
+    def is_admin(message: Message) -> bool:
+        return bool(message.from_user and message.from_user.id in config.admin_ids)
 
     @router.message(CommandStart())
     async def start(message: Message, state: FSMContext):
@@ -48,6 +54,7 @@ def build_router(config: Config, storage: LeadStorage, faq: list) -> Router:
             f"Здравствуйте! Это бот «{config.business_name}».\nВыберите действие:", reply_markup=MENU
         )
 
+    @router.message(Command("cancel"))
     @router.message(F.text == BTN_CANCEL)
     async def cancel(message: Message, state: FSMContext):
         await state.clear()
@@ -95,8 +102,9 @@ def build_router(config: Config, storage: LeadStorage, faq: list) -> Router:
         for admin_id in config.admin_ids:
             try:
                 await bot.send_message(admin_id, text)
-            except Exception:  # админ мог не запустить бота — заявка всё равно сохранена
-                pass
+            except Exception:
+                # чаще всего админ не нажал /start у бота; заявка уже в базе, так что просто пишем в лог
+                log.exception("Не удалось отправить заявку №%s админу %s", lead_id, admin_id)
         await message.answer(f"Спасибо! Заявка №{lead_id} принята, скоро свяжемся.", reply_markup=MENU)
 
     @router.message(Command("stats"))
@@ -104,7 +112,7 @@ def build_router(config: Config, storage: LeadStorage, faq: list) -> Router:
         if not is_admin(message):
             return
         s = storage.stats()
-        await message.answer(f"Заявок всего: {s['total']}\nЗа сегодня: {s['today']}")
+        await message.answer(f"Заявок всего: {s['total']}\nЗа последние сутки: {s['last_day']}")
 
     @router.message(Command("export"))
     async def export(message: Message):

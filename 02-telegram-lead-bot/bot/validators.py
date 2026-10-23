@@ -15,10 +15,17 @@ def normalize_phone(text: str) -> Optional[str]:
     digits = re.sub(r"\D", "", text or "")
     if len(digits) == 11 and digits[0] in "78":
         digits = digits[1:]
-    if len(digits) != 10 or digits[0] != "9" and not digits[0] in "348":
+    # мобильные начинаются на 9, городские — на 3, 4, 8
+    if len(digits) != 10 or digits[0] not in "3489":
         return None
     return "+7" + digits
 
 
 def clean_comment(text: str, limit: int = 500) -> str:
     return " ".join((text or "").split())[:limit]
+
+
+def csv_safe(value) -> str:
+    """Excel выполняет ячейки, начинающиеся с = + - @, как формулы — экранируем пользовательский ввод."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@") and not text.startswith("+7") else text

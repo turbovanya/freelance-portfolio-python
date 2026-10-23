@@ -6,7 +6,7 @@ import pytest
 from bot.config import Config, parse_admin_ids
 from bot.db import LeadStorage
 from bot.faq import find_answer, load_faq
-from bot.validators import clean_comment, normalize_phone, validate_name
+from bot.validators import clean_comment, csv_safe, normalize_phone, validate_name
 
 
 @pytest.mark.parametrize("raw", ["+7 (912) 345-67-89", "8 912 345 67 89", "79123456789", "9123456789"])
@@ -14,7 +14,7 @@ def test_phone_normalized(raw):
     assert normalize_phone(raw) == "+79123456789"
 
 
-@pytest.mark.parametrize("raw", ["", "123", "abc", "+1 202 555 0100", "891234"])
+@pytest.mark.parametrize("raw", ["", "123", "abc", "+1 202 555 0100", "891234", "+7 000 000 00 00"])
 def test_phone_invalid(raw):
     assert normalize_phone(raw) is None
 
@@ -33,15 +33,24 @@ def test_comment_cleaning():
 
 def test_storage_add_stats_export():
     s = LeadStorage(":memory:")
-    assert s.stats() == {"total": 0, "today": 0}
+    assert s.stats() == {"total": 0, "last_day": 0}
     lead_id = s.add(1, "ivan", "Иван", "+79123456789", "нужен бот; срочно")
     s.add(2, None, "Мария", "+79990001122", "")
     assert lead_id == 1
-    assert s.stats() == {"total": 2, "today": 2}
+    assert s.stats() == {"total": 2, "last_day": 2}
     assert [r["name"] for r in s.recent(1)] == ["Мария"]
     rows = list(csv.reader(io.StringIO(s.export_csv().decode("utf-8-sig")), delimiter=";"))
     assert len(rows) == 3 and rows[1][4] == "+79123456789"
     assert rows[1][5] == "нужен бот; срочно"  # разделитель внутри поля экранируется
+
+
+def test_csv_export_neutralizes_formulas():
+    s = LeadStorage(":memory:")
+    s.add(1, None, "Иван", "+79123456789", '=HYPERLINK("http://evil","x")')
+    rows = list(csv.reader(io.StringIO(s.export_csv().decode("utf-8-sig")), delimiter=";"))
+    assert rows[1][5].startswith("'=")
+    assert rows[1][4] == "+79123456789"  # телефон не портим
+    assert csv_safe("-1") == "'-1" and csv_safe(None) == ""
 
 
 def test_faq_search():
