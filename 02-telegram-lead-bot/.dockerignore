@@ -1,0 +1,7 @@
+.env
+data/
+tests/
+docs/
+scripts/
+**/__pycache__
+*.egg-info
