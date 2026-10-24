@@ -1,0 +1,30 @@
+# Учебный магазин books.toscrape.com: сайт сделан специально для практики парсинга.
+title: Books to Scrape
+start_url: https://books.toscrape.com/
+item: article.product_pod
+next_page: li.next a
+encoding: utf-8
+
+fields:
+  title:
+    selector: h3 a
+    attr: title
+  url:
+    selector: h3 a
+    attr: href
+    absolute: true
+  price:
+    selector: p.price_color
+    type: price
+  rating:
+    selector: p.star-rating
+    attr: class
+    map: { One: 1, Two: 2, Three: 3, Four: 4, Five: 5 }
+  in_stock:
+    selector: p.availability
+    type: bool
+    contains: in stock
+  image_url:
+    selector: div.image_container img
+    attr: src
+    absolute: true

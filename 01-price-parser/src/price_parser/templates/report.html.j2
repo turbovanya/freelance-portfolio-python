@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Отчёт о ценах: {{ result.profile }}</title>
+<style>
+  :root { --bg:#f5f7fb; --card:#fff; --text:#1d2433; --muted:#6b7385; --line:#e4e8f0;
+          --up:#d93b3b; --up-bg:#fdeceb; --down:#1f9d55; --down-bg:#e6f6ec; --accent:#2f5bea; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:1100px; margin:0 auto; padding:32px 20px 48px; }
+  header { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
+  h1 { margin:0; font-size:26px; }
+  .sub { color:var(--muted); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:14px; margin-bottom:28px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .card b { display:block; font-size:28px; line-height:1.2; }
+  .card span { color:var(--muted); font-size:13px; }
+  .card.up b { color:var(--up); } .card.down b { color:var(--down); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:24px; overflow:hidden; }
+  section h2 { font-size:17px; margin:0; padding:16px 18px; border-bottom:1px solid var(--line); }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:10px 18px; text-align:left; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); background:#fafbfd; }
+  tr:last-child td { border-bottom:0; }
+  th.num, td.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  a { color:var(--accent); text-decoration:none; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:13px; font-weight:600; }
+  .pill.up { background:var(--up-bg); color:var(--up); } .pill.down { background:var(--down-bg); color:var(--down); }
+  .thumb { width:34px; height:46px; object-fit:cover; border-radius:4px; background:#eee; }
+  .stars { color:#f5a623; letter-spacing:1px; white-space:nowrap; }
+  .muted { color:var(--muted); }
+  .empty { padding:18px; color:var(--muted); }
+  footer { color:var(--muted); font-size:13px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Отчёт о ценах</h1>
+      <div class="sub">{{ result.profile }} · {{ result.started_at.strftime("%d.%m.%Y, %H:%M") }}</div>
+    </div>
+    <div class="sub">Страниц: {{ result.pages }} · собрано товаров: {{ result.products|length }}</div>
+  </header>
+
+  <div class="cards">
+    <div class="card"><b>{{ products|length }}</b><span>товаров в отчёте</span></div>
+    <div class="card up"><b>{{ result.increased|length }}</b><span>подорожало</span></div>
+    <div class="card down"><b>{{ result.decreased|length }}</b><span>подешевело</span></div>
+    <div class="card"><b>{{ result.new_products|length }}</b><span>новых товаров</span></div>
+    <div class="card"><b>{{ result.removed|length }}</b><span>пропало из каталога</span></div>
+  </div>
+
+  <section>
+    <h2>Изменения цен с прошлого запуска</h2>
+    {% if result.changes %}
+    <table>
+      <tr><th>Товар</th><th class="num">Было</th><th class="num">Стало</th><th class="num">Изменение</th></tr>
+      {% for c in result.changes %}
+      <tr>
+        <td><a href="{{ c.url }}">{{ c.title }}</a></td>
+        <td class="num muted">{{ c.old_price|money }}</td>
+        <td class="num"><b>{{ c.new_price|money }}</b></td>
+        <td class="num"><span class="pill {{ 'up' if c.is_increase else 'down' }}">{{ "%+.2f"|format(c.delta) }} ({{ "%+.1f"|format(c.percent) }}%)</span></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% elif result.first_run %}
+    <div class="empty">Это первый запуск: история цен начнёт копиться со следующего.</div>
+    {% else %}
+    <div class="empty">Цены не изменились.</div>
+    {% endif %}
+  </section>
+
+  {% if result.new_products %}
+  <section>
+    <h2>Новые товары</h2>
+    <table>
+      <tr><th>Товар</th><th class="num">Цена</th></tr>
+      {% for p in result.new_products %}
+      <tr><td><a href="{{ p.url }}">{{ p.title }}</a></td><td class="num">{{ p.price|money }} {{ p.currency }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Все товары</h2>
+    <table>
+      <tr><th></th><th>Название</th><th>Рейтинг</th><th>Наличие</th><th class="num">Цена</th></tr>
+      {% for p in products %}
+      <tr>
+        <td style="width:52px">{% if p.image_url %}<img class="thumb" src="{{ p.image_url }}" alt="" loading="lazy">{% endif %}</td>
+        <td><a href="{{ p.url }}">{{ p.title }}</a></td>
+        <td class="stars">{% if p.rating %}{{ "★" * p.rating }}<span class="muted">{{ "★" * (5 - p.rating) }}</span>{% endif %}</td>
+        <td>{% if p.in_stock %}есть{% elif p.in_stock is sameas false %}<span class="muted">нет</span>{% endif %}</td>
+        <td class="num">{{ p.price|money }} {{ p.currency }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <footer>Сформировано price-parser</footer>
+</div>
+</body>
+</html>
