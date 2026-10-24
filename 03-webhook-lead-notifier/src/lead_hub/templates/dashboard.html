@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Заявки · Lead Hub</title>
+<style>
+  :root { --bg:#f4f6fa; --card:#fff; --text:#1b2232; --muted:#6c7489; --line:#e5e8ef; --accent:#3b5bdb;
+          --ok:#2b8a3e; --ok-bg:#e6f4ea; --warn:#c2410c; --warn-bg:#fff1e6; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  .top { background:#1b2232; color:#fff; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+  .top b { font-size:16px; letter-spacing:.02em; }
+  .top span { color:#aab3c8; font-size:13px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px; }
+  .cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .card b { display:block; font-size:28px; line-height:1.2; }
+  .card span { color:var(--muted); font-size:13px; }
+  .card.warn b { color:var(--warn); }
+  .grid { display:grid; grid-template-columns:1fr 260px; gap:20px; align-items:start; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .panel h2 { font-size:15px; margin:0; padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .toolbar { display:flex; gap:8px; }
+  input[type=search] { border:1px solid var(--line); border-radius:8px; padding:7px 10px; width:220px; font:inherit; }
+  .btn { border:1px solid var(--line); background:#fff; border-radius:8px; padding:7px 12px; font:inherit; color:var(--text); text-decoration:none; cursor:pointer; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:11px 18px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); background:#fafbfd; font-weight:600; }
+  tr:last-child td { border-bottom:0; }
+  .muted { color:var(--muted); font-size:13px; }
+  .msg { max-width:300px; }
+  .tag { display:inline-block; padding:2px 9px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .tag.ok { background:var(--ok-bg); color:var(--ok); } .tag.warn { background:var(--warn-bg); color:var(--warn); }
+  .src { display:flex; justify-content:space-between; padding:9px 18px; border-bottom:1px solid var(--line); }
+  .src:last-child { border-bottom:0; }
+  .bar { height:6px; background:#e7ebf6; border-radius:4px; margin:4px 18px 10px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--accent); }
+  .pager { display:flex; gap:6px; justify-content:flex-end; padding:12px 18px; }
+  .empty { padding:28px 18px; color:var(--muted); text-align:center; }
+  @media (max-width: 900px) { .cards { grid-template-columns:repeat(2, 1fr); } .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <b>Lead Hub</b>
+  <span>{% if telegram %}Telegram подключён{% else %}Telegram не настроен{% endif %} · {{ now.strftime("%d.%m.%Y %H:%M") }}</span>
+</div>
+<div class="wrap">
+  <div class="cards">
+    <div class="card"><b>{{ stats.today }}</b><span>заявок за сутки</span></div>
+    <div class="card"><b>{{ stats.week }}</b><span>за неделю</span></div>
+    <div class="card"><b>{{ stats.total }}</b><span>всего</span></div>
+    <div class="card {{ 'warn' if stats.pending else '' }}"><b>{{ stats.pending }}</b><span>ждут отправки в Telegram</span></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>
+        Заявки{% if q %} по запросу «{{ q }}»: {{ total }}{% endif %}
+        <span class="toolbar">
+          <form method="get" action="/admin"><input type="search" name="q" value="{{ q }}" placeholder="Имя, телефон, текст"></form>
+          <a class="btn" href="/admin/export.csv">Скачать CSV</a>
+          {% if stats.pending %}<form method="post" action="/admin/resend"><button class="btn primary">Дослать</button></form>{% endif %}
+        </span>
+      </h2>
+      {% if leads %}
+      <table>
+        <tr><th>№</th><th>Клиент</th><th>Сообщение</th><th>Источник</th><th>Telegram</th></tr>
+        {% for lead in leads %}
+        <tr>
+          <td class="muted">{{ lead.id }}</td>
+          <td><b>{{ lead.name }}</b><br>{{ lead.phone }}{% if lead.email %}<br><span class="muted">{{ lead.email }}</span>{% endif %}</td>
+          <td class="msg">{{ lead.message or "" }}<br><span class="muted">{{ lead.local_time(tz).strftime("%d.%m %H:%M") }}</span></td>
+          <td>{{ lead.source }}{% if lead.utm_campaign %}<br><span class="muted">{{ lead.utm_source }} / {{ lead.utm_campaign }}</span>{% endif %}</td>
+          <td>{% if lead.notified %}<span class="tag ok">доставлено</span>{% else %}<span class="tag warn" title="{{ lead.last_error or '' }}">ожидает</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% if pages > 1 %}
+      <div class="pager">
+        {% for p in range(1, pages + 1) %}<a class="btn {{ 'primary' if p == page else '' }}" href="?page={{ p }}&q={{ q }}">{{ p }}</a>{% endfor %}
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="empty">Заявок пока нет. Как только форма на сайте отправит первую, она появится здесь.</div>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>Источники</h2>
+      {% set top = stats.sources[0].count if stats.sources else 1 %}
+      {% for s in stats.sources %}
+      <div class="src"><span>{{ s.source }}</span><b>{{ s.count }}</b></div>
+      <div class="bar"><i style="width: {{ (s.count / top * 100)|round|int }}%"></i></div>
+      {% else %}
+      <div class="empty">Нет данных</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+</body>
+</html>
